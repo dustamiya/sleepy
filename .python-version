@@ -1,1 +1,97 @@
-3.13
+from flask import Flask, render_template, request, jsonify
+import time
+from datetime import datetime
+import platform
+import json
+
+app = Flask(__name__)
+
+# 存储用户状态
+user_status = {
+    'last_seen': None,
+    'status': 'offline',
+    'software': None,
+    'device_info': None,
+    'ip_address': None
+}
+
+def get_device_info():
+    """获取设备信息"""
+    return {
+        'system': platform.system(),
+        'version': platform.version(),
+        'machine': platform.machine(),
+        'processor': platform.processor(),
+    }
+
+def get_software_from_user_agent(user_agent):
+    """从用户代理字符串中提取软件信息"""
+    user_agent = user_agent.lower()
+    software = []
+    
+    # 浏览器检测
+    if 'chrome' in user_agent and 'edg' not in user_agent:
+        software.append('Google Chrome')
+    elif 'firefox' in user_agent:
+        software.append('Mozilla Firefox')
+    elif 'safari' in user_agent and 'chrome' not in user_agent:
+        software.append('Safari')
+    elif 'edg' in user_agent:
+        software.append('Microsoft Edge')
+    elif 'opera' in user_agent or 'opr' in user_agent:
+        software.append('Opera')
+    
+    # 操作系统检测
+    if 'windows' in user_agent:
+        software.append('Windows')
+    elif 'mac' in user_agent:
+        software.append('Mac OS')
+    elif 'linux' in user_agent:
+        software.append('Linux')
+    elif 'android' in user_agent:
+        software.append('Android')
+    elif 'iphone' in user_agent or 'ipad' in user_agent:
+        software.append('iOS')
+    
+    return software if software else ['Unknown']
+
+@app.route('/')
+def index():
+    """主页面"""
+    user_agent = request.headers.get('User-Agent', '')
+    ip_address = request.remote_addr
+    
+    # 更新用户状态
+    user_status['last_seen'] = datetime.now()
+    user_status['status'] = 'online'
+    user_status['software'] = get_software_from_user_agent(user_agent)
+    user_status['device_info'] = get_device_info()
+    user_status['ip_address'] = ip_address
+    
+    return render_template('index.html', status=user_status)
+
+@app.route('/api/status')
+def get_status():
+    """获取状态API"""
+    # 检查用户是否离线（超过30秒没有活动）
+    if user_status['last_seen'] and (datetime.now() - user_status['last_seen']).total_seconds() > 30:
+        user_status['status'] = 'offline'
+    
+    return jsonify(user_status)
+
+@app.route('/api/update', methods=['POST'])
+def update_status():
+    """更新状态API（用于心跳机制）"""
+    user_agent = request.headers.get('User-Agent', '')
+    ip_address = request.remote_addr
+    
+    # 更新用户状态
+    user_status['last_seen'] = datetime.now()
+    user_status['status'] = 'online'
+    user_status['software'] = get_software_from_user_agent(user_agent)
+    user_status['ip_address'] = ip_address
+    
+    return jsonify({'status': 'updated'})
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
